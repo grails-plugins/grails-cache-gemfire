@@ -12,6 +12,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+import grails.plugin.cache.ConfigBuilder
 import grails.plugin.cache.gemfire.GrailsGemfireCacheManager
 import grails.plugin.cache.web.filter.gemfire.GemfirePageFragmentCachingFilter
 
@@ -51,7 +52,7 @@ class CacheGemfireGrailsPlugin {
 		if (cacheConfig.config instanceof Closure) {
 			// TODO
 		}
- 
+
 		gemfireCache(CacheFactoryBean)
 
 		grailsCacheManager(GrailsGemfireCacheManager) {
