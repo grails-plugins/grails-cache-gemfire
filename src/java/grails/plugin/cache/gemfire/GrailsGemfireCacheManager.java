@@ -15,11 +15,15 @@
 package grails.plugin.cache.gemfire;
 
 import java.util.Collection;
+import java.util.Collections;
 import java.util.LinkedHashSet;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 
+import org.springframework.beans.factory.InitializingBean;
 import org.springframework.cache.Cache;
-import org.springframework.cache.support.AbstractCacheManager;
+import org.springframework.cache.CacheManager;
 import org.springframework.data.gemfire.support.GemfireCache;
 import org.springframework.util.Assert;
 
@@ -27,15 +31,47 @@ import com.gemstone.gemfire.cache.Region;
 
 /**
  * Based on org.springframework.data.gemfire.support.GemfireCacheManager.
+ * Changed to directly implement CacheManager since loadCaches() might be empty,
+ * and it's possible to add caches at runtime.
  *
  * @author Costin Leau
  * @author Burt Beckwith
  */
-public class GrailsGemfireCacheManager extends AbstractCacheManager {
+public class GrailsGemfireCacheManager implements CacheManager, InitializingBean {
 
 	protected com.gemstone.gemfire.cache.Cache gemfireCache;
+	protected final ConcurrentMap<String, Cache> cacheMap = new ConcurrentHashMap<String, Cache>();
+	protected final Set<String> cacheNames = new LinkedHashSet<String>();
 
-	@Override
+	public Cache getCache(String name) {
+		Cache cache = cacheMap.get(name);
+		if (cache == null) {
+			// check the gemfire cache again in case the cache was added at runtime
+			Region<?, ?> region = gemfireCache.getRegion(name);
+			if (region != null) {
+				cache = new GemfireCache(region);
+				addCache(cache);
+			}
+		}
+
+		return cache;
+	}
+
+	public Collection<String> getCacheNames() {
+		return Collections.unmodifiableSet(cacheNames);
+	}
+
+	public void afterPropertiesSet() {
+		for (Cache cache : loadCaches()) {
+			addCache(cache);
+		}
+	}
+
+	protected void addCache(Cache cache) {
+		cacheMap.put(cache.getName(), cache);
+		cacheNames.add(cache.getName());
+	}
+
 	protected Collection<Cache> loadCaches() {
 		Assert.notNull(gemfireCache, "a backing GemFire cache is required");
 		Assert.isTrue(!gemfireCache.isClosed(), "the GemFire cache is closed; an open instance is required");
@@ -49,25 +85,9 @@ public class GrailsGemfireCacheManager extends AbstractCacheManager {
 		return caches;
 	}
 
-	@Override
-	public Cache getCache(String name) {
-		Cache cache = super.getCache(name);
-		if (cache == null) {
-			// check the gemfire cache again in case the cache was added at runtime
-			Region<?, ?> region = gemfireCache.getRegion(name);
-			if (region != null) {
-				cache = new GemfireCache(region);
-				addCache(cache);
-			}
-		}
-
-		return cache;
-	}
-
 	/**
-	 * Sets the GemFire Cache backing this {@link org.springframework.cache.CacheManager}.
-	 * 
-	 * @param gemfireCache
+	 * Dependency injection for the backing GemFire Cache.
+	 * @param cache the cache
 	 */
 	public void setCache(com.gemstone.gemfire.cache.Cache cache) {
 		gemfireCache = cache;
